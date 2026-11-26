@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RideCircle – Prototype with Accounts</title>
+<style>
+/* =====================================================
+   RideCircle prototype: HTML + CSS + simple JavaScript
+   How screens switch: every screen has an id (#home, #map...).
+   A link like <a href="#map"> makes the browser "target" that id,
+   and the CSS rule .screen:target shows only that screen.
+   JavaScript (at the bottom of the file) adds the actions: join a ride,
+   filter rides, send and save hazard reports, SOS message.
+   ===================================================== */
+
+/* 1. Colours and basic settings (change a colour here, it changes everywhere) */
+:root{
+  --ink:#12263A;      /* dark blue text */
+  --teal:#0F766E;     /* main brand colour */
+  --mist:#EAF1F0;     /* light background */
+  --amber:#F59E0B;    /* warnings and hazards */
+  --red:#DC2626;      /* SOS and danger */
+  --line:#D5E0DE;     /* thin borders */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",system-ui,sans-serif;color:var(--ink);background:#C9D9D6;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;gap:40px;padding:16px}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:0;color:inherit}   /* make buttons look like our other elements */
+button.btn{width:100%;color:#fff}.opt{cursor:pointer}
+.msg{margin-top:10px;font-weight:600;color:var(--teal)}
+
+/* 2. Intro text next to the phone (hidden on small screens) */
+.intro{max-width:260px}
+.intro h1{font-size:30px;line-height:1.1;margin-bottom:10px;color:var(--teal)}
+.intro p{font-size:14px;line-height:1.5;margin-bottom:10px}
+.intro a{display:inline-block;margin-top:6px;padding:8px 14px;border:2px solid var(--ink);border-radius:8px;font-weight:600;font-size:14px}
+@media(max-width:760px){.intro{display:none}}
+
+/* 3. The phone frame */
+#simple{position:absolute;opacity:0;pointer-events:none}  /* hidden checkbox = Simple mode switch */
+.app{position:relative;width:375px;max-width:100%;height:min(760px,94vh);background:var(--mist);
+  border:10px solid var(--ink);border-radius:36px;overflow:hidden;font-size:14px}
+#simple:checked ~ .app{font-size:17px}   /* Simple mode: bigger text for riders like Rashad */
+
+/* 4. Screens: all hidden, the targeted one is shown. Home shows when nothing is targeted */
+.screen{display:none;position:absolute;inset:0 0 62px 0;overflow-y:auto;padding:18px 16px 20px}
+.screen:target,.app:not(:has(.screen:target)) #home{display:block}
+h2{font-size:1.5em;margin-bottom:12px}
+h3{font-size:1.05em;margin:16px 0 8px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.muted{color:#5B6E7E;font-size:.9em}
+.chip{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.85em;font-weight:600;background:#CFE8E4;color:#0B5A54}
+.chip.amber{background:#FDE9B8;color:#8A5A00}.chip.red{background:#FBD0D0;color:#9B1C1C}
+.btn{display:block;text-align:center;padding:11px;border-radius:12px;background:var(--teal);color:#fff;font-weight:700}
+.btn.small{display:inline-block;padding:6px 14px;border-radius:99px;font-size:.9em}
+.btn.red{background:var(--red)}.btn.ghost{background:#fff;color:var(--teal);border:2px solid var(--teal)}
+.back{display:inline-block;margin-bottom:10px;font-weight:600;color:var(--teal)}
+
+/* 5. Home: big number + weekly bars + quick actions */
+.hero{background:var(--ink);color:#fff;border-radius:18px;padding:16px;margin-bottom:12px}
+.hero b{font-size:2.6em;line-height:1}
+.hero .row{margin-top:10px;font-size:.9em;opacity:.9}
+.bars{display:flex;align-items:flex-end;gap:6px;height:60px;margin-top:12px}
+.bars i{flex:1;background:#5FD1C4;border-radius:4px 4px 0 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 10px;text-align:center;font-weight:600}
+.tile span{display:block;font-size:1.7em;margin-bottom:4px}
+.tile.sos{background:var(--red);color:#fff;border:0}
+
+/* 6. Map drawn with CSS (a real map needs JavaScript + a map service) */
+.map{position:relative;height:300px;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+  background:
+   linear-gradient(90deg,transparent 49%,#fff 49%,#fff 51%,transparent 51%) 0 0/90px 90px,
+   linear-gradient(0deg,transparent 49%,#fff 49%,#fff 51%,transparent 51%) 0 0/90px 90px,#D8E8DF}
+.map .sea{position:absolute;left:0;right:0;bottom:0;height:70px;background:#A9D3E8}
+.map svg{position:absolute;inset:0;width:100%;height:100%}
+.pin{position:absolute;width:30px;height:30px;border-radius:50%;background:#fff;border:2px solid var(--ink);
+  display:flex;align-items:center;justify-content:center;font-size:15px}
+.pin.h{border-color:var(--amber)}.pin.s{border-color:var(--teal)}
+
+/* 7. Lists: group rides, leaderboard, services */
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.bar{height:10px;background:var(--line);border-radius:9px;overflow:hidden;margin:8px 0 4px}
+.bar i{display:block;height:100%;background:var(--teal)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.opt{padding:7px 12px;border:2px solid var(--line);border-radius:99px;background:#fff;font-weight:600}
+.opt.on{border-color:var(--teal);background:#CFE8E4}
+
+/* 8. SOS screen */
+.sosbtn{width:190px;height:190px;border-radius:50%;background:var(--red);color:#fff;font-size:2.2em;font-weight:800;
+  display:flex;align-items:center;justify-content:center;margin:20px auto;box-shadow:0 0 0 14px #FBD0D0}
+textarea{width:100%;height:80px;border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit}
+
+/* 9. Bottom navigation (always visible) */
+nav{position:absolute;left:0;right:0;bottom:0;height:62px;background:#fff;border-top:1px solid var(--line);display:flex}
+nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.72em;color:#5B6E7E;font-weight:600}
+nav a span{font-size:1.9em;line-height:1.1}
+/* highlight the tab of the screen that is open */
+.app:not(:has(.screen:target)) nav a[href="#home"],
+.app:has(#home:target) nav a[href="#home"],.app:has(#map:target) nav a[href="#map"],
+.app:has(#rides:target) nav a[href="#rides"],.app:has(#community:target) nav a[href="#community"],
+.app:has(#profile:target) nav a[href="#profile"]{color:var(--teal)}
+
+/* 10. Database page (full screen, opens with #database) */
+#database{display:none;position:fixed;inset:0;background:var(--mist);overflow:auto;padding:30px 20px;z-index:9}
+#database:target{display:block}
+.db{max-width:900px;margin:auto}
+.tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0}
+.tbl{background:#fff;border:2px solid var(--ink);border-radius:10px;overflow:hidden;font-size:14px}
+.tbl h4{background:var(--ink);color:#fff;padding:7px 10px}
+.tbl p{padding:4px 10px;border-top:1px solid var(--line)}
+.tbl p b{color:var(--teal)}
+
+/* 11. Account screens (log in / sign up) cover the app until the user is logged in */
+.auth{position:absolute;inset:0;z-index:5;background:var(--mist);overflow-y:auto;padding:26px 18px}
+.app.in .auth{display:none}
+.auth h1{color:var(--teal);font-size:2em}
+.tabs{display:flex;gap:6px;margin:14px 0}.tabs .opt{flex:1;text-align:center}
+.form{display:none}.form.show{display:block}
+.f{display:block;margin-bottom:10px;font-weight:600;font-size:.9em}
+.f input,.f select{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}
+.err{color:var(--red);font-weight:600;min-height:1.3em;margin-bottom:8px}
+.detail{padding:6px 0;border-bottom:1px solid var(--line)}.detail:last-child{border:0}
+</style>
+</head>
+<body>
+
+<!-- Simple mode switch (a checkbox; the label is in the Profile screen) -->
+<input type="checkbox" id="simple">
+
+<div class="intro">
+  <h1>RideCircle</h1>
+  <p>A community service app for cyclists. Create an account (or try the demo account), then join rides, confirm hazards and send your own reports. Everything is saved in this browser.</p>
+  <p>Tap the tabs and tiles inside the phone. Turn on <b>Simple mode</b> in Profile to see the large-text version for Rashad (50).</p>
+  <a href="#database">See database design</a>
+</div>
+
+<div class="app">
+
+  <!-- ================= ACCOUNT: LOG IN / SIGN UP ================= -->
+  <div class="auth" id="auth">
+    <h1>RideCircle</h1>
+    <p class="muted">Ride together. Stay safe.</p>
+    <div class="tabs">
+      <span class="opt on" onclick="showForm('loginForm',this)">Log in</span>
+      <span class="opt" onclick="showForm('signupForm',this)">Create account</span>
+    </div>
+
+    <div class="form show" id="loginForm">
+      <label class="f">Email<input id="liEmail" type="email" placeholder="you@example.com"></label>
+      <label class="f">Password<input id="liPass" type="password"></label>
+      <p class="err" id="liErr"></p>
+      <button class="btn" onclick="logIn()">Log in</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="demoLogin()">Try the demo account</button>
+    </div>
+
+    <div class="form" id="signupForm">
+      <label class="f">Full name<input id="suName" placeholder="Leyla Hasanova"></label>
+      <label class="f">Email<input id="suEmail" type="email" placeholder="you@example.com"></label>
+      <label class="f">Password (at least 6 characters)<input id="suPass" type="password"></label>
+      <label class="f">Repeat password<input id="suPass2" type="password"></label>
+      <label class="f">Age group
+        <select id="suAge" onchange="suggestSimple()">
+          <option value="">Choose...</option><option>18–24</option><option>25–34</option><option>35–44</option><option>45–54</option><option>55+</option>
+        </select></label>
+      <label class="f">Why do you ride?
+        <select id="suGoal">
+          <option value="">Choose...</option><option value="health">Health and fitness</option><option value="commute">Commuting</option>
+          <option value="social">Fun with friends</option><option value="sport">Sport and challenges</option>
+        </select></label>
+      <label class="f">Emergency contact name (optional)<input id="suCName"></label>
+      <label class="f">Emergency contact phone (optional)<input id="suCPhone" type="tel"></label>
+      <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="suTerms" style="width:auto;margin:0"> I agree to the terms of use</label>
+      <p class="err" id="suErr"></p>
+      <button class="btn" onclick="signUp()">Create account</button>
+    </div>
+  </div>
+
+  <!-- ================= HOME ================= -->
+  <section class="screen" id="home">
+    <p class="muted" id="greet">Good morning</p>
+    <h2>Ready to ride?</h2>
+    <div class="hero">
+      <div class="muted" style="color:#BFD6E6">This week</div>
+      <b>48.6 km</b>
+      <div class="bars"><i style="height:40%"></i><i style="height:70%"></i><i style="height:30%"></i><i style="height:90%"></i><i style="height:55%"></i><i style="height:100%"></i><i style="height:20%"></i></div>
+      <div class="row"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+    </div>
+    <div class="card row"><span>Today in Baku: 24°C, light wind</span><span class="chip">Air: Good</span></div>
+    <div class="card" id="tip"><b>Suggested for you</b><p class="muted" id="tipText"></p></div>
+    <a class="btn" href="#map">Start ride</a>
+    <h3>Quick actions</h3>
+    <div class="grid">
+      <a class="tile sos" href="#sos"><span>🆘</span>SOS</a>
+      <a class="tile" href="#report"><span>⚠️</span>Report hazard</a>
+      <a class="tile" href="#services"><span>🔧</span>Repair and parking</a>
+      <a class="tile" href="#rides"><span>👥</span>Find a group</a>
+    </div>
+  </section>
+
+  <!-- ================= MAP ================= -->
+  <section class="screen" id="map">
+    <h2>Safe routes</h2>
+    <div class="chips">
+      <span class="opt on" onclick="pickRoute(this,'Seaside Boulevard Loop','8.2 km · 32 min · flat · 1 hazard reported','Calm route')">Calm</span>
+      <span class="opt" onclick="pickRoute(this,'Neftchilar Express Lane','6.1 km · 21 min · busy roads · 2 hazards reported','Fastest')">Fastest</span>
+      <span class="opt" onclick="pickRoute(this,'Bulvar and Old City Tour','11.4 km · 48 min · views of the sea · 0 hazards','Scenic')">Scenic</span>
+    </div>
+    <div class="map">
+      <div class="sea"></div>
+      <svg viewBox="0 0 340 300"><path d="M30 240 C90 200 110 120 180 130 S280 80 310 40" fill="none" stroke="#0F766E" stroke-width="6" stroke-linecap="round" stroke-dasharray="1 0"/></svg>
+      <span class="pin s" style="left:20px;top:222px">🅿️</span>
+      <span class="pin h" style="left:120px;top:110px">⚠️</span>
+      <span class="pin" style="left:215px;top:105px">👥</span>
+      <span class="pin s" style="left:290px;top:25px">🔧</span>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="row"><b id="routeName">Seaside Boulevard Loop</b><span class="chip" id="routeTag">Calm route</span></div>
+      <p class="muted" id="routeInfo">8.2 km · 32 min · flat · 1 hazard reported</p>
+    </div>
+    <a class="btn" href="#home">Start navigation</a>
+  </section>
+
+  <!-- ================= GROUP RIDES ================= -->
+  <section class="screen" id="rides">
+    <h2>Group rides</h2>
+    <div class="chips">
+      <span class="opt on" onclick="filterRides(this,'All')">All</span>
+      <span class="opt" onclick="filterRides(this,'Easy')">Easy</span>
+      <span class="opt" onclick="filterRides(this,'Medium')">Medium</span>
+      <span class="opt" onclick="filterRides(this,'Hard')">Hard</span>
+    </div>
+    <div class="card ride" data-level="Easy">
+      <div class="row"><b>Sunrise Seaside Ride</b><span class="chip">Easy</span></div>
+      <p class="muted">Tomorrow, 06:30 · Flag Square · <span class="n">12</span> riders</p>
+      <div class="row" style="margin-top:8px"><span class="muted">Led by Rashad A.</span><button class="btn small" onclick="toggleJoin(this)">Join</button></div>
+    </div>
+    <div class="card ride" data-level="Medium">
+      <div class="row"><b>After-work Commuter Group</b><span class="chip amber">Medium</span></div>
+      <p class="muted">Mon to Fri, 18:00 · 28 May Metro · <span class="n">8</span> riders</p>
+      <div class="row" style="margin-top:8px"><span class="muted">Led by Leyla H.</span><button class="btn small" onclick="toggleJoin(this)">Join</button></div>
+    </div>
+    <div class="card ride" data-level="Hard">
+      <div class="row"><b>Weekend Hill Explorers</b><span class="chip red">Hard</span></div>
+      <p class="muted">Saturday, 09:00 · Outside the city · <span class="n">20</span> riders</p>
+      <div class="row" style="margin-top:8px"><span class="muted">Led by Tural M.</span><button class="btn small" onclick="toggleJoin(this)">Join</button></div>
+    </div>
+    <a class="btn ghost" href="#rides">Create a group ride</a>
+  </section>
+
+  <!-- ================= COMMUNITY ================= -->
+  <section class="screen" id="community">
+    <h2>Community</h2>
+    <div class="card">
+      <div class="row"><b>November 200 km challenge</b><span class="chip">12 days left</span></div>
+      <div class="bar"><i style="width:68%"></i></div>
+      <p class="muted">136 of 200 km done</p>
+    </div>
+    <h3>Leaderboard this week</h3>
+    <div class="card">
+      <div class="row"><div class="row"><div class="avatar">T</div><b>Tural</b></div><span>112 km</span></div><hr style="border:0;border-top:1px solid var(--line);margin:8px 0">
+      <div class="row"><div class="row"><div class="avatar">L</div><b>Leyla</b></div><span>96 km</span></div><hr style="border:0;border-top:1px solid var(--line);margin:8px 0">
+      <div class="row"><div class="row"><div class="avatar">R</div><b>Rashad</b></div><span>84 km</span></div>
+    </div>
+    <h3>Road alerts from riders</h3>
+    <div id="alerts">
+    <div class="card"><div class="row"><b>Deep pothole on Neftchilar Ave.</b><button class="chip amber" onclick="confirmHazard(this)"><span>12</span> confirms</button></div><p class="muted">Reported 2 hours ago</p></div>
+    <div class="card"><div class="row"><b>Road works near the boulevard</b><button class="chip amber" onclick="confirmHazard(this)"><span>5</span> confirms</button></div><p class="muted">Reported yesterday</p></div>
+    </div>
+    <a class="btn" href="#report">Report a hazard</a>
+  </section>
+
+  <!-- ================= SERVICES + MARKETPLACE ================= -->
+  <section class="screen" id="services">
+    <a class="back" href="#home">Back</a>
+    <h2>Repair, parking and market</h2>
+    <h3>Repair shops near you</h3>
+    <div class="card"><div class="row"><b>Pedal Point Workshop</b><span class="chip">Open</span></div><p class="muted">0.8 km · flat tire fix from 5 AZN</p></div>
+    <div class="card"><div class="row"><b>Cycle Care Baku</b><span class="chip">Open</span></div><p class="muted">1.6 km · full service</p></div>
+    <h3>Secure parking</h3>
+    <div class="card"><div class="row"><b>Metro Bike Cage</b><span class="chip">Free</span></div><p class="muted">Camera monitored · 20 spaces</p></div>
+    <h3>Second-hand market</h3>
+    <div class="grid">
+      <div class="card"><b>City bike</b><p class="muted">Good condition</p><b>180 AZN</b></div>
+      <div class="card"><b>Helmet M</b><p class="muted">Like new</p><b>25 AZN</b></div>
+    </div>
+  </section>
+
+  <!-- ================= PROFILE ================= -->
+  <section class="screen" id="profile">
+    <div class="row" style="justify-content:flex-start;gap:12px;margin-bottom:12px">
+      <div class="avatar" id="pAvatar" style="width:56px;height:56px;font-size:1.5em">R</div>
+      <div><h2 id="pName" style="margin:0">Rider</h2><span class="muted" id="pMeta"></span></div>
+    </div>
+    <div class="grid">
+      <div class="tile"><b style="font-size:1.4em" id="sJoined">0</b><br>group rides joined</div>
+      <div class="tile"><b style="font-size:1.4em" id="sReports">0</b><br>hazards reported</div>
+    </div>
+    <h3>Account details</h3>
+    <div class="card" id="pDetails"></div>
+    <h3>Badges</h3>
+    <div class="chips" id="pBadges"></div>
+    <h3>Settings</h3>
+    <label for="simple" class="card row" style="cursor:pointer"><span><b>Simple mode</b><br><span class="muted">Larger text, fewer details</span></span><span class="chip">Switch</span></label>
+    <div class="card"><b>Emergency contact</b>
+      <label class="f" style="margin-top:8px">Name<input id="pcName"></label>
+      <label class="f">Phone<input id="pcPhone" type="tel"></label>
+      <button class="btn small" onclick="saveContact()">Save contact</button> <span class="msg" id="pcMsg"></span></div>
+    <div class="card row"><span>Health dashboard</span><span class="chip">On</span></div>
+    <button class="btn" onclick="logOut()">Log out</button>
+    <button class="btn ghost" style="margin-top:8px;color:var(--red);border-color:var(--red)" onclick="deleteAccount()">Delete my account</button>
+    <a class="btn ghost" style="margin-top:8px" href="#database">See database design</a>
+  </section>
+
+  <!-- ================= SOS ================= -->
+  <section class="screen" id="sos">
+    <a class="back" href="#home">Back</a>
+    <h2>Emergency help</h2>
+    <p class="muted">Press the button to alert your contacts. In the real app it will send your live location.</p>
+    <button class="sosbtn" onclick="sendSOS()">SOS</button>
+    <p class="msg" id="sosMsg" style="text-align:center"></p>
+    <div class="card row" id="sosContact"></div>
+    <div class="card"><div class="row"><b>Nearest ambulance</b><span class="chip red">103</span></div></div>
+  </section>
+
+  <!-- ================= REPORT HAZARD ================= -->
+  <section class="screen" id="report">
+    <a class="back" href="#home">Back</a>
+    <h2>Report a hazard</h2>
+    <div class="chips">
+      <span class="opt on" onclick="pickType(this)">Pothole</span>
+      <span class="opt" onclick="pickType(this)">Road works</span>
+      <span class="opt" onclick="pickType(this)">Broken glass</span>
+      <span class="opt" onclick="pickType(this)">Unsafe crossing</span>
+    </div>
+    <p class="muted" style="margin-bottom:6px">Add details (optional)</p>
+    <textarea id="note" placeholder="For example: deep hole in the bike lane"></textarea>
+    <div class="card row" style="margin-top:10px"><span>📍 Location</span><span class="chip">Current position</span></div>
+    <button class="btn" onclick="sendReport()">Send report</button>
+    <p class="msg" id="reportMsg"></p>
+    <p class="muted" style="margin-top:10px">Prototype note: reports are saved in this browser only (localStorage). The real version will store them in the database.</p>
+  </section>
+
+  <!-- ================= BOTTOM NAVIGATION ================= -->
+  <nav>
+    <a href="#home"><span>🏠</span>Home</a>
+    <a href="#map"><span>🗺️</span>Map</a>
+    <a href="#rides"><span>👥</span>Rides</a>
+    <a href="#community"><span>💬</span>Community</a>
+    <a href="#profile"><span>👤</span>Profile</a>
+  </nav>
+</div>
+
+<!-- ================= DATABASE DESIGN (opens with #database) ================= -->
+<section id="database">
+  <div class="db">
+    <a class="back" href="#profile">Back to the app</a>
+    <h2>Database design (planned for the real version)</h2>
+    <p class="muted">Each box is a table. <b style="color:var(--teal)">PK</b> = primary key (unique id). <b style="color:var(--teal)">FK</b> = foreign key (link to another table).</p>
+    <div class="tables">
+      <div class="tbl"><h4>Users</h4><p><b>PK</b> user_id</p><p>name</p><p>email</p><p>password_hash</p><p>age_group</p><p>riding_goal</p><p>simple_mode</p><p>created_at</p></div>
+      <div class="tbl"><h4>Rides</h4><p><b>PK</b> ride_id</p><p><b>FK</b> user_id</p><p>distance_km</p><p>duration_min</p><p>date</p></div>
+      <div class="tbl"><h4>Group_Rides</h4><p><b>PK</b> group_id</p><p><b>FK</b> leader_id</p><p>title</p><p>level</p><p>start_time</p><p>meeting_point</p></div>
+      <div class="tbl"><h4>Group_Members</h4><p><b>FK</b> group_id</p><p><b>FK</b> user_id</p><p>joined_at</p></div>
+      <div class="tbl"><h4>Hazard_Reports</h4><p><b>PK</b> report_id</p><p><b>FK</b> user_id</p><p>type</p><p>latitude, longitude</p><p>confirmations</p></div>
+      <div class="tbl"><h4>Emergency_Contacts</h4><p><b>PK</b> contact_id</p><p><b>FK</b> user_id</p><p>name</p><p>phone</p></div>
+      <div class="tbl"><h4>Services</h4><p><b>PK</b> service_id</p><p>type (repair/parking)</p><p>name</p><p>latitude, longitude</p></div>
+      <div class="tbl"><h4>Market_Items</h4><p><b>PK</b> item_id</p><p><b>FK</b> seller_id</p><p>title</p><p>price_azn</p></div>
+    </div>
+    <div class="card">
+      <b>How the tables connect</b>
+      <p class="muted">One user has many rides, reports, and emergency contacts. Users join many group rides, and each group ride has many users (this is why Group_Members exists). One user can sell many market items.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+/* =====================================================
+   RideCircle JavaScript: accounts + actions (simple style)
+   The browser's localStorage works like a tiny database:
+     "rcUsers"   = list of all accounts
+     "rcSession" = email of the person who is logged in
+     "rcReports" = hazard reports
+   NOTE: this is a prototype. A real app saves accounts on a server and
+   never stores passwords in the browser.
+   ===================================================== */
+function $(id) { return document.getElementById(id); }
+var app = document.querySelector(".app");
+var user = null;                       // the logged-in person (null = nobody)
+
+/* ---------- 1) Small "database" helpers ---------- */
+function getUsers() { return JSON.parse(localStorage.getItem("rcUsers") || "[]"); }
+function saveUsers(list) { localStorage.setItem("rcUsers", JSON.stringify(list)); }
+function findUser(email) {
+  var list = getUsers();
+  for (var i = 0; i < list.length; i++) { if (list[i].email === email) { return list[i]; } }
+  return null;
+}
+function saveUser(u) {                 // replace this user's record in the list
+  var list = getUsers();
+  for (var i = 0; i < list.length; i++) { if (list[i].email === u.email) { list[i] = u; } }
+  saveUsers(list);
+}
+function hash(text) {                  // turns a password into a number (demo only, not real security)
+  var h = 5381;
+  for (var i = 0; i < text.length; i++) { h = (h * 33) ^ text.charCodeAt(i); }
+  return String(h >>> 0);
+}
+
+/* ---------- 2) Chips and tabs ---------- */
+function selectChip(chip) {
+  var chips = chip.parentNode.children;
+  for (var i = 0; i < chips.length; i++) { chips[i].classList.remove("on"); }
+  chip.classList.add("on");
+}
+function showForm(id, tab) {           // switch between Log in and Create account
+  selectChip(tab);
+  $("loginForm").classList.remove("show");
+  $("signupForm").classList.remove("show");
+  $(id).classList.add("show");
+}
+function suggestSimple() {             // riders 45+ get large text suggested automatically
+  var age = $("suAge").value;
+  $("simple").checked = (age === "45–54" || age === "55+");
+}
+
+/* ---------- 3) Create account ---------- */
+function signUp() {
+  var name = $("suName").value.trim();
+  var email = $("suEmail").value.trim().toLowerCase();
+  var pass = $("suPass").value;
+  var error = "";
+  if (name.length < 2) { error = "Please enter your full name."; }
+  else if (!/^\S+@\S+\.\S+$/.test(email)) { error = "Please enter a valid email, for example you@example.com."; }
+  else if (pass.length < 6) { error = "Password must have at least 6 characters."; }
+  else if (pass !== $("suPass2").value) { error = "The two passwords do not match."; }
+  else if ($("suAge").value === "") { error = "Please choose your age group."; }
+  else if ($("suGoal").value === "") { error = "Please tell us why you ride."; }
+  else if (!$("suTerms").checked) { error = "Please accept the terms of use."; }
+  else if (findUser(email)) { error = "This email already has an account. Please log in."; }
+  $("suErr").textContent = error;
+  if (error) { return; }
+
+  var newUser = {
+    name: name, email: email, pass: hash(pass),
+    age: $("suAge").value, goal: $("suGoal").value,
+    contactName: $("suCName").value.trim(), contactPhone: $("suCPhone").value.trim(),
+    simple: $("simple").checked, joined: [], created: new Date().toLocaleDateString()
+  };
+  var list = getUsers();
+  list.push(newUser);
+  saveUsers(list);
+  startSession(newUser);
+}
+
+/* ---------- 4) Log in, demo account, log out, delete ---------- */
+function logIn() {
+  var u = findUser($("liEmail").value.trim().toLowerCase());
+  if (!u) { $("liErr").textContent = "No account with this email. Create one first."; return; }
+  if (u.pass !== hash($("liPass").value)) { $("liErr").textContent = "Wrong password. Please try again."; return; }
+  startSession(u);
+}
+function demoLogin() {
+  var demo = findUser("demo@ridecircle.app");
+  if (!demo) {
+    demo = { name: "Leyla Hasanova", email: "demo@ridecircle.app", pass: hash("demo123"), age: "25–34", goal: "commute",
+             contactName: "Nigar (sister)", contactPhone: "+994 50 000 00 00", simple: false, joined: [], created: new Date().toLocaleDateString() };
+    var list = getUsers(); list.push(demo); saveUsers(list);
+  }
+  startSession(demo);
+}
+function startSession(u) {
+  user = u;
+  localStorage.setItem("rcSession", u.email);
+  $("simple").checked = u.simple;
+  app.classList.add("in");             // hides the account screen
+  fillScreens();
+  window.location.hash = "#home";
+}
+function logOut() {
+  localStorage.removeItem("rcSession");
+  user = null;
+  app.classList.remove("in");
+  $("liEmail").value = ""; $("liPass").value = ""; $("liErr").textContent = "";
+  window.location.hash = "";
+}
+function deleteAccount() {
+  if (!confirm("Delete your account and all your data? This cannot be undone.")) { return; }
+  var list = getUsers(), keep = [];
+  for (var i = 0; i < list.length; i++) { if (list[i].email !== user.email) { keep.push(list[i]); } }
+  saveUsers(keep);
+  logOut();
+}
+$("simple").onchange = function () {   // remember the Simple mode choice in the account
+  if (user) { user.simple = this.checked; saveUser(user); }
+};
+
+/* ---------- 5) Fill every screen with the account's data ---------- */
+var tips = {
+  health: "Try the calm Seaside Boulevard route and keep your daily ride habit going.",
+  commute: "Check the secure parking near the metro and join the after-work commuter group.",
+  social: "Join a group ride this weekend and take on the November challenge with friends.",
+  sport: "Climb the leaderboard: the 200 km challenge has 12 days left."
+};
+function detailRow(label, value) {
+  var row = document.createElement("div");
+  row.className = "detail row";
+  row.innerHTML = '<span class="muted"></span><b></b>';
+  row.children[0].textContent = label;
+  row.children[1].textContent = value;
+  return row;
+}
+function countMyReports() {
+  var all = JSON.parse(localStorage.getItem("rcReports") || "[]"), n = 0;
+  for (var i = 0; i < all.length; i++) { if (all[i].email === user.email) { n++; } }
+  return n;
+}
+function fillScreens() {
+  var first = user.name.split(" ")[0];
+  var hour = new Date().getHours();
+  var greeting = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening");
+  $("greet").textContent = greeting + ", " + first;
+  $("tipText").textContent = tips[user.goal];
+
+  $("pAvatar").textContent = first.charAt(0).toUpperCase();
+  $("pName").textContent = user.name;
+  $("pMeta").textContent = "Joined " + user.created;
+  var d = $("pDetails");
+  d.innerHTML = "";
+  d.appendChild(detailRow("Email", user.email));
+  d.appendChild(detailRow("Age group", user.age));
+  d.appendChild(detailRow("Riding goal", $("suGoal").querySelector('option[value="' + user.goal + '"]').textContent));
+  d.appendChild(detailRow("Simple mode", user.simple ? "On" : "Off"));
+
+  var reports = countMyReports();
+  $("sReports").textContent = reports;
+  $("sJoined").textContent = user.joined.length;
+  var badges = '<span class="chip">New rider</span>';
+  if (reports >= 1) { badges += '<span class="chip amber">Hazard hero</span>'; }
+  if (user.joined.length >= 1) { badges += '<span class="chip">Team player</span>'; }
+  $("pBadges").innerHTML = badges;
+
+  $("pcName").value = user.contactName; $("pcPhone").value = user.contactPhone;
+  $("sosContact").innerHTML = user.contactName
+    ? '<b></b><span class="chip">Will be alerted</span>'
+    : '<span>No contact yet. Add one in Profile.</span>';
+  if (user.contactName) { $("sosContact").children[0].textContent = user.contactName + " (" + user.contactPhone + ")"; }
+  updateRides();
+}
+function saveContact() {
+  user.contactName = $("pcName").value.trim();
+  user.contactPhone = $("pcPhone").value.trim();
+  saveUser(user);
+  fillScreens();
+  $("pcMsg").textContent = "Saved";
+}
+
+/* ---------- 6) Map and rides ---------- */
+function pickRoute(chip, name, info, tag) {
+  selectChip(chip);
+  $("routeName").textContent = name; $("routeInfo").textContent = info; $("routeTag").textContent = tag;
+}
+function filterRides(chip, level) {
+  selectChip(chip);
+  var rides = document.querySelectorAll(".ride");
+  for (var i = 0; i < rides.length; i++) {
+    var show = (level === "All" || rides[i].getAttribute("data-level") === level);
+    rides[i].style.display = show ? "block" : "none";
+  }
+}
+var rideCards = document.querySelectorAll(".ride");
+for (var r = 0; r < rideCards.length; r++) {      // remember the starting number of riders
+  rideCards[r].setAttribute("data-base", rideCards[r].querySelector(".n").textContent);
+}
+function updateRides() {               // show Joined / Join and the rider count for this account
+  for (var i = 0; i < rideCards.length; i++) {
+    var title = rideCards[i].querySelector("b").textContent;
+    var joined = user && user.joined.indexOf(title) !== -1;
+    rideCards[i].querySelector(".n").textContent = Number(rideCards[i].getAttribute("data-base")) + (joined ? 1 : 0);
+    rideCards[i].querySelector("button").textContent = joined ? "Joined" : "Join";
+  }
+}
+function toggleJoin(button) {
+  var title = button.closest(".ride").querySelector("b").textContent;
+  var spot = user.joined.indexOf(title);
+  if (spot === -1) { user.joined.push(title); } else { user.joined.splice(spot, 1); }
+  saveUser(user);
+  fillScreens();
+}
+
+/* ---------- 7) Hazard reports ---------- */
+var reportType = "Pothole";
+function pickType(chip) { selectChip(chip); reportType = chip.textContent; }
+function confirmHazard(button) {
+  var counter = button.querySelector("span");
+  counter.textContent = Number(counter.textContent) + 1;
+}
+function addAlert(report) {            // builds one alert card on screen
+  var card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = '<div class="row"><b></b><button class="chip amber" onclick="confirmHazard(this)"><span>1</span> confirms</button></div><p class="muted"></p>';
+  card.querySelector("b").textContent = report.title;
+  card.querySelector("p").textContent = "Reported by " + report.author + " on " + report.date;
+  var list = $("alerts");
+  list.insertBefore(card, list.firstChild);
+}
+function sendReport() {
+  var note = $("note").value.trim();
+  var report = { title: reportType + (note ? ": " + note : ""), author: user.name, email: user.email, date: new Date().toLocaleDateString() };
+  var all = JSON.parse(localStorage.getItem("rcReports") || "[]");
+  all.push(report);
+  localStorage.setItem("rcReports", JSON.stringify(all));
+  addAlert(report);
+  $("note").value = "";
+  fillScreens();
+  window.location.hash = "#community";
+}
+
+/* ---------- 8) SOS ---------- */
+function sendSOS() {
+  if (!user.contactName) { $("sosMsg").textContent = "Add an emergency contact in Profile first."; return; }
+  var now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("sosMsg").textContent = "Alert sent to " + user.contactName + " at " + now + ". Stay where you are.";
+}
+
+/* ---------- 9) When the page opens ---------- */
+var oldReports = JSON.parse(localStorage.getItem("rcReports") || "[]");
+for (var k = 0; k < oldReports.length; k++) { addAlert(oldReports[k]); }
+var remembered = localStorage.getItem("rcSession");     // still logged in from last time?
+if (remembered && findUser(remembered)) { startSession(findUser(remembered)); }
+</script>
+</body>
+</html>
